@@ -95,6 +95,12 @@ Button behaviour:
   timer, and a red **Cancel timer** button is shown.
 - Turning the dehumidifier off from the card also cancels a pending timer.
 
+### Unavailable state
+
+When `entity` reports `unavailable` (e.g. the device dropped off the network),
+every control on the card is disabled, the timer menu is closed, and a warning
+notice is shown until the entity comes back.
+
 ## License
 
 [MIT](LICENSE)

@@ -11,6 +11,8 @@
  *       idle     -> "Set timer"
  *       pressed  -> grid of 5..60 (by 5) then 75..180 (by 15) minute options
  *       running  -> "<N> min left" (whole minutes); tap re-opens the option grid
+ *   - while `entity` is unavailable, every control is disabled and a warning
+ *     notice is shown in place of the usual status
  *
  * Turning the machine off when the timer expires is handled by a companion
  * Home Assistant automation that triggers on `timer.finished` for
@@ -30,7 +32,7 @@
  * -----------------------------------------------------------------------------
  */
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 
 const OPTIONS = (() => {
   const o = [];
@@ -106,6 +108,7 @@ class DehumidifierCard extends HTMLElement {
     const a = el.dataset.action;
     const dev = hass.states[c.entity];
     const timer = hass.states[c.timer_entity];
+    if (!dev || dev.state === "unavailable") return;
 
     if (a === "power") {
       const on = dev && dev.state === "on";
@@ -164,6 +167,9 @@ class DehumidifierCard extends HTMLElement {
 
     const fan = hass.states[c.fan_entity];
     const timer = hass.states[c.timer_entity];
+    const unavail = dev.state === "unavailable";
+    if (unavail) this._menuOpen = false;
+    const dis = unavail ? "disabled" : "";
     const on = dev.state === "on";
     const mode = dev.attributes.mode;
     const isTarget = mode === c.target_mode;
@@ -193,13 +199,13 @@ class DehumidifierCard extends HTMLElement {
 
     // Skip DOM churn on the 1s tick unless something visible changed.
     const key = [
-      on, mode, fanState, tgtHum, tState, minLeft, this._menuOpen, Math.round(progress * 100),
+      unavail, on, mode, fanState, tgtHum, tState, minLeft, this._menuOpen, Math.round(progress * 100),
     ].join("|");
     if (!force && key === this._lastKey) return;
     this._lastKey = key;
 
     const seg = (active, action, value, label) =>
-      `<button class="seg ${active ? "on" : ""}" data-action="${action}" data-value="${value}">${label}</button>`;
+      `<button class="seg ${active ? "on" : ""}" data-action="${action}" data-value="${value}" ${dis}>${label}</button>`;
 
     const menuGrid = OPTIONS.map(
       (m) => `<button class="opt" data-action="timer-set" data-value="${m}">${m}</button>`
@@ -253,23 +259,34 @@ class DehumidifierCard extends HTMLElement {
                  border:1px solid var(--divider-color); background:var(--card-background-color);
                  color:var(--primary-text-color); }
           .opt:hover, .seg:hover, .step:hover, .timerbtn:hover { border-color:var(--primary-color); }
+          button:disabled { cursor:not-allowed; opacity:.45; }
+          button:disabled:hover { border-color:var(--divider-color); }
+          ha-alert.row { display:block; }
           .cancel { grid-column:1 / -1; color:var(--error-color, #db4437);
                     border-color:var(--error-color, #db4437); }
           @media (max-width:360px){ .grid{ grid-template-columns:repeat(4,1fr);} }
         </style>
         <div class="wrap">
           <div class="top">
-            <button class="power" data-action="power" title="${on ? "Turn off" : "Turn on"}">
+            <button class="power" data-action="power" title="${unavail ? "Unavailable" : on ? "Turn off" : "Turn on"}" ${dis}>
               <ha-icon icon="mdi:power"></ha-icon>
             </button>
             <div>
               <div class="title">${c.name}</div>
               <div class="sub">
-                ${on ? "On" : "Off"}${mode ? " &middot; " + mode : ""}${
+                ${unavail ? "Unavailable" : on ? "On" : "Off"}${mode ? " &middot; " + mode : ""}${
       curHum != null ? " &middot; " + Math.round(curHum) + "% now" : ""
     }</div>
             </div>
           </div>
+
+          ${
+            unavail
+              ? `<ha-alert class="row" alert-type="warning">
+                   ${c.name} is unavailable. Controls are disabled until it reconnects.
+                 </ha-alert>`
+              : ""
+          }
 
           <div class="row">
             <div class="lbl">Mode</div>
@@ -292,16 +309,16 @@ class DehumidifierCard extends HTMLElement {
               ? `<div class="row">
                    <div class="lbl">Target humidity</div>
                    <div class="hum">
-                     <button class="step" data-action="humidity" data-value="-${c.humidity_step}">&minus;</button>
+                     <button class="step" data-action="humidity" data-value="-${c.humidity_step}" ${dis}>&minus;</button>
                      <div class="humval">${tgtHum != null ? Math.round(tgtHum) : "--"}<small>%</small></div>
-                     <button class="step" data-action="humidity" data-value="${c.humidity_step}">+</button>
+                     <button class="step" data-action="humidity" data-value="${c.humidity_step}" ${dis}>+</button>
                    </div>
                  </div>`
               : ""
           }
 
           <div class="row">
-            <button class="timerbtn ${running ? "running" : ""}" data-action="timer-toggle">
+            <button class="timerbtn ${running ? "running" : ""}" data-action="timer-toggle" ${dis}>
               ${timerLabel}
               ${progress > 0 ? `<span class="bar" style="width:${progress * 100}%"></span>` : ""}
             </button>
